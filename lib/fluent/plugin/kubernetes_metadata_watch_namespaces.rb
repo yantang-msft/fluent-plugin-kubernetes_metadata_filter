@@ -25,8 +25,12 @@ module KubernetesMetadata
 
     def start_namespace_watch
       begin
-        resource_version = @client.get_namespaces.resourceVersion
-        watcher          = @client.watch_namespaces(resource_version)
+        if @specific_pod
+          watcher          = @client.watch_namespaces({:name => @namespace_name})
+        else
+          resource_version = @client.get_namespaces.resourceVersion
+          watcher          = @client.watch_namespaces(resource_version)
+        end
       rescue Exception=>e
         message = "start_namespace_watch: Exception encountered setting up namespace watch from Kubernetes API #{@apiVersion} endpoint #{@kubernetes_url}: #{e.message}"
         message += " (#{e.response})" if e.respond_to?(:response)
@@ -36,13 +40,22 @@ module KubernetesMetadata
       watcher.each do |notice|
         case notice.type
           when 'MODIFIED'
-            cache_key = notice.object['metadata']['uid']
-            cached    = @namespace_cache[cache_key]
-            if cached
-              @namespace_cache[cache_key] = parse_namespace_metadata(notice.object)
+            namespace_id = notice.object['metadata']['uid']
+            namespace_cached    = @namespace_cache[namespace_id]
+            if namespace_cached
+              @namespace_cache[namespace_id] = parse_namespace_metadata(notice.object)
               @stats.bump(:namespace_cache_watch_updates)
             else
               @stats.bump(:namespace_cache_watch_misses)
+            end
+
+            if @specific_pod
+              id_cache_key = get_id_cache_key_of_specific_pod
+              id_cached = @id_cache[id_cache_key]
+              if id_cached && id_cached[:namespace_id] != namespace_id
+                id_cached[:namespace_id] = namespace_id
+                @stats.bump(:id_cache_watch_updates_namespace);
+              end
             end
           when 'DELETED'
             # ignore and let age out for cases where 

@@ -25,8 +25,12 @@ module KubernetesMetadata
 
     def start_pod_watch
       begin
-        resource_version = @client.get_pods.resourceVersion
-        watcher          = @client.watch_pods(resource_version)
+        if @specific_pod
+          watcher          = @client.watch_pods({:namespace => @namespace_name, :name => @pod_name})
+        else
+          resource_version = @client.get_pods.resourceVersion
+          watcher          = @client.watch_pods(resource_version)
+        end
       rescue Exception => e
         message = "Exception encountered fetching metadata from Kubernetes API endpoint: #{e.message}"
         message += " (#{e.response})" if e.respond_to?(:response)
@@ -37,16 +41,25 @@ module KubernetesMetadata
       watcher.each do |notice|
         case notice.type
           when 'MODIFIED'
-            cache_key = notice.object['metadata']['uid']
-            cached    = @cache[cache_key]
-            if cached
-              @cache[cache_key] = parse_pod_metadata(notice.object)
+            pod_id = notice.object['metadata']['uid']
+            pod_cached    = @cache[pod_id]
+            if pod_cached
+              @cache[pod_id] = parse_pod_metadata(notice.object)
               @stats.bump(:pod_cache_watch_updates)
             elsif ENV['K8S_NODE_NAME'] == notice.object['spec']['nodeName'] then
-              @cache[cache_key] = parse_pod_metadata(notice.object)
+              @cache[pod_id] = parse_pod_metadata(notice.object)
               @stats.bump(:pod_cache_host_updates)
             else
               @stats.bump(:pod_cache_watch_misses)
+            end
+
+            if @specific_pod
+              id_cache_key = get_id_cache_key_of_specific_pod
+              id_cached = @id_cache[id_cache_key]
+              if id_cached && id_cached[:pod_id] != pod_id
+                id_cached[:pod_id] = pod_id
+                @stats.bump(:id_cache_watch_updates_pod);
+              end
             end
           when 'DELETED'
             # ignore and let age out for cases where pods

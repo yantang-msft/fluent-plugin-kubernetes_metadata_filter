@@ -46,6 +46,9 @@ module Fluent::Plugin
     config_param :client_key, :string, default: nil
     config_param :ca_file, :string, default: nil
     config_param :verify_ssl, :bool, default: true
+    config_param :namespace_name, :string, default: nil
+    config_param :pod_name, :string, default: nil
+    config_param :container_name, :string, default: nil
     config_param :tag_to_kubernetes_name_regexp,
                  :string,
                  :default => 'var\.log\.containers\.(?<pod_name>[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*)_(?<namespace>[^_]+)_(?<container_name>.+)-(?<docker_id>[a-z0-9]{64})\.log$'
@@ -171,7 +174,7 @@ module Fluent::Plugin
       # Caches pod/namespace UID tuples for a given container UID.
       @id_cache = LruRedux::TTL::ThreadSafeCache.new(@cache_size, @cache_ttl)
 
-      # Use the container UID as the key to fetch a hash containing pod metadata
+      # Use the pod UID as the key to fetch a hash containing pod metadata
       @cache = LruRedux::TTL::ThreadSafeCache.new(@cache_size, @cache_ttl)
 
       # Use the namespace UID as the key to fetch a hash containing namespace metadata
@@ -209,6 +212,15 @@ module Fluent::Plugin
         end
       end
 
+      # Check whether the user want to enrich record with metadata of a specific pod
+      @specific_pod = false
+      if @namespace_name || @pod_name
+        if !@namespace_name || !pod_name
+          raise ArgumentError.new("You need to specify both the namespace_name and pod_name if you want to enrich the record with metadata of a specific pod")
+        end
+        @specific_pod = true
+      end
+
       if @kubernetes_url.present?
 
         ssl_options = {
@@ -243,7 +255,11 @@ module Fluent::Plugin
           namespace_thread.abort_on_exception = true
         end
       end
-      if @use_journal
+
+      if @specific_pod
+        log.debug "Will enrich record with metadata of pod: #{@namespace_name}/#{@pod_name}"
+        self.class.class_eval { alias_method :filter_stream, :filter_stream_with_specific_pod }
+      elsif @use_journal
         log.debug "Will stream from the journal"
         self.class.class_eval { alias_method :filter_stream, :filter_stream_from_journal }
       else
@@ -296,6 +312,36 @@ module Fluent::Plugin
 
     def filter_stream(tag, es)
       es
+    end
+
+    def get_id_cache_key_of_specific_pod()
+      if !@specific_pod
+        raise "This method can only be called when a specific pod is specified"
+      end
+
+      "#{@namespace_name}_#{@pod_name}"
+    end
+
+    def filter_stream_with_specific_pod(tag, es)
+      new_es = Fluent::MultiEventStream.new
+
+      match_data = {
+        'namespace' => @namespace_name,
+        'pod_name' => @pod_name,
+        'container_name' => @container_name
+      }
+      cache_key = get_id_cache_key_of_specific_pod
+      batch_miss_cache = {}
+      metadata = {
+        'kubernetes' => get_metadata_for_record(match_data, cache_key, create_time_from_record(es.first[1]), batch_miss_cache)
+      }
+
+      es.each do |time, record|
+        record = record.merge(Marshal.load(Marshal.dump(metadata))) if metadata
+        new_es.add(time, record)
+      end
+      dump_stats
+      new_es
     end
 
     def filter_stream_from_files(tag, es)
