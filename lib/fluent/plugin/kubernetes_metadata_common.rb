@@ -61,10 +61,10 @@ module KubernetesMetadata
         pod_object['status']['containerStatuses'].each do|container_status|
           # get plain container id (eg. docker://hash -> hash)
           container_id = container_status['containerID'].sub /^[-_a-zA-Z0-9]+:\/\//, ''
-          container_meta[container_id] = {
-              'name' => container_status['name'],
-              'image' => container_status['image'],
-              'image_id' => container_status['imageID']
+          container_meta[container_status['name']] = {
+               'id' => container_id,
+               'image' => container_status['image'],
+               'image_id' => container_status['imageID']
           }
         end
       rescue
