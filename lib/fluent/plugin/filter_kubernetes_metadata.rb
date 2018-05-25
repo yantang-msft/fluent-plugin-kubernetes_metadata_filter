@@ -46,9 +46,6 @@ module Fluent::Plugin
     config_param :client_key, :string, default: nil
     config_param :ca_file, :string, default: nil
     config_param :verify_ssl, :bool, default: true
-    config_param :namespace_name, :string, default: nil
-    config_param :pod_name, :string, default: nil
-    config_param :container_name, :string, default: nil
     config_param :tag_to_kubernetes_name_regexp,
                  :string,
                  :default => 'var\.log\.containers\.(?<pod_name>[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*)_(?<namespace>[^_]+)_(?<container_name>.+)-(?<docker_id>[a-z0-9]{64})\.log$'
@@ -74,6 +71,12 @@ module Fluent::Plugin
     config_param :allow_orphans, :bool, default: true
     config_param :orphaned_namespace_name, :string, default: '.orphaned'
     config_param :orphaned_namespace_id, :string, default: 'orphaned'
+
+    config_section :metadata_source, multi: false do
+      config_param :namespace_name, :string
+      config_param :pod_name, :string, default: nil
+      config_param :container_name, :string, default: nil
+    end
 
     def fetch_pod_metadata(namespace_name, pod_name)
       log.trace("fetching pod metadata: #{namespace_name}/#{pod_name}") if log.trace?
@@ -214,8 +217,8 @@ module Fluent::Plugin
 
       # Check whether the user want to enrich record with metadata of a specific pod
       @specific_pod = false
-      if @namespace_name || @pod_name
-        if !@namespace_name || !pod_name
+      if @metadata_source
+        if !@metadata_source.namespace_name || !@metadata_source.pod_name
           raise ArgumentError.new("You need to specify both the namespace_name and pod_name if you want to enrich the record with metadata of a specific pod")
         end
         @specific_pod = true
@@ -257,7 +260,7 @@ module Fluent::Plugin
       end
 
       if @specific_pod
-        log.debug "Will enrich record with metadata of pod: #{@namespace_name}/#{@pod_name}"
+        log.debug "Will enrich record with metadata of pod: #{@metadata_source.namespace_name}/#{@metadata_source.pod_name}"
         self.class.class_eval { alias_method :filter_stream, :filter_stream_with_specific_pod }
       elsif @use_journal
         log.debug "Will stream from the journal"
@@ -319,16 +322,16 @@ module Fluent::Plugin
         raise "This method can only be called when a specific pod is specified"
       end
 
-      "#{@namespace_name}_#{@pod_name}"
+      "#{@metadata_source.namespace_name}_#{@metadata_source.pod_name}"
     end
 
     def filter_stream_with_specific_pod(tag, es)
       new_es = Fluent::MultiEventStream.new
 
       match_data = {
-        'namespace' => @namespace_name,
-        'pod_name' => @pod_name,
-        'container_name' => @container_name
+        'namespace' => @metadata_source.namespace_name,
+        'pod_name' => @metadata_source.pod_name,
+        'container_name' => @metadata_source.container_name
       }
       cache_key = get_id_cache_key_of_specific_pod
       batch_miss_cache = {}

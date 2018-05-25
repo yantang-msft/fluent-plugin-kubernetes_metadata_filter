@@ -37,9 +37,6 @@ Configuration options for fluent.conf are:
 * `client_cert` - path to a client cert file to authenticate to the API server
 * `client_key` - path to a client key file to authenticate to the API server
 * `bearer_token_file` - path to a file containing the bearer token to use for authentication
-* `namespace_name` - The namespace name of the desired pod. This is useful in cases like running fluentd as a sidecar, where you only want to enrich the metadata of the pod that the sidecar is running in. The namespace_name must be used in conjunction with pod_name. You can easily pass the the namespace_name and the pod_name from the [Downward API](https://kubernetes.io/docs/tasks/inject-data-application/downward-api-volume-expose-pod-information/). (default: `nil`)
-* `pod_name` - The name of the desired pod. (default: `nil`)
-* `container_name` - The name of the container running inside the desired pod. (default: `nil`)
 * `tag_to_kubernetes_name_regexp` - the regular expression used to extract kubernetes metadata (pod name, container name, namespace) from the current fluentd tag.
 This must used named capture groups for `container_name`, `pod_name` & `namespace` (default: `\.(?<pod_name>[^\._]+)_(?<namespace>[^_]+)_(?<container_name>.+)-(?<docker_id>[a-z0-9]{64})\.log$</pod>)`)
 * `cache_size` - size of the cache of Kubernetes metadata to reduce requests to the API server (default: `1000`)
@@ -55,6 +52,10 @@ This must used named capture groups for `container_name`, `pod_name` & `namespac
 when true (default: `true`)
 * `orphaned_namespace_name` - The namespace to associate with records where the namespace can not be determined (default: `.orphaned`)
 * `orphaned_namespace_id` - The namespace id to associate with records where the namespace can not be determined (default: `orphaned`)
+* `<metadata_source> section` - The names of the kubernetes resource as the source of metadata. You can only specify one kubernetes resource here. This is useful in cases like running fluentd as a sidecar, where you only want to enrich the metadata of the pod that the sidecar is running in. You can easily pass the the namespace_name and the pod_name from the [Downward API](https://kubernetes.io/docs/tasks/inject-data-application/downward-api-volume-expose-pod-information/).
+  * `namespace_name` - The name of the namespace. This is required if `<metadata_source>` is specified.
+  * `pod_name` - The name of the pod. Metadata of the pod will be added if `pod_name` is specified (default: `nil`)
+  * `container_name` - The name of the container. Metadata of the container will be added if `container_name` is specified (default: `nil`)
 
 **NOTE:** As of the release 2.1.x of this plugin, it no longer supports parsing the source message into JSON and attaching it to the
 payload.  The following configuration options are removed:

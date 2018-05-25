@@ -26,7 +26,7 @@ module KubernetesMetadata
     def start_pod_watch
       begin
         if @specific_pod
-          watcher          = @client.watch_pods({:namespace => @namespace_name, :name => @pod_name})
+          watcher          = @client.watch_pods({:namespace => @metadata_source.namespace_name, :name => @metadata_source.pod_name})
         else
           resource_version = @client.get_pods.resourceVersion
           watcher          = @client.watch_pods(resource_version)

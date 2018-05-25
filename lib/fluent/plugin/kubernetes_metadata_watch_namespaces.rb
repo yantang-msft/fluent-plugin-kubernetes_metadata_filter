@@ -26,7 +26,7 @@ module KubernetesMetadata
     def start_namespace_watch
       begin
         if @specific_pod
-          watcher          = @client.watch_namespaces({:name => @namespace_name})
+          watcher          = @client.watch_namespaces({:name => @metadata_source.namespace_name})
         else
           resource_version = @client.get_namespaces.resourceVersion
           watcher          = @client.watch_namespaces(resource_version)
