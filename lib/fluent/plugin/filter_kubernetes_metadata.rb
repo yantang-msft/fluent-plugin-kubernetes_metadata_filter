@@ -244,11 +244,11 @@ module Fluent::Plugin
 
         if @watch
           if @metadata_source
-            self.class.send(:include, KubernetesMetadata::WatchNamespace)
-            self.class.send(:include, KubernetesMetadata::WatchPod)
+            self.class.include KubernetesMetadata::WatchNamespace
+            self.class.include KubernetesMetadata::WatchPod
           else
-            self.class.send(:include, KubernetesMetadata::WatchNamespaces)
-            self.class.send(:include, KubernetesMetadata::WatchPods)
+            self.class.include KubernetesMetadata::WatchNamespaces
+            self.class.include KubernetesMetadata::WatchPods
           end
 
           thread = Thread.new(self) { |this| this.start_pod_watch }
@@ -259,7 +259,11 @@ module Fluent::Plugin
       end
 
       if @metadata_source
-        log.debug "Will enrich record with metadata of #{@metadata_source.namespace_name}/#{@metadata_source.pod_name}/#{@metadata_source.container_name}"
+        log.on_debug do
+          msg = "Will enrich record with metadata of namespace: #{@metadata_source.namespace_name}, pod: #{@metadata_source.pod_name}"
+          msg += ", container: #{@metadata_source.container_name}" if metadata_source.container_name
+          log.debug msg
+        end
         self.class.class_eval { alias_method :filter_stream, :filter_stream_given_metadata_source }
       elsif @use_journal
         log.debug "Will stream from the journal"
