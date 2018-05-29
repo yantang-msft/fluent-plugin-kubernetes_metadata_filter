@@ -84,6 +84,31 @@ module KubernetesMetadata
       return kubernetes_metadata
     end
 
+    def update_namespace_cache(notice)
+      cache_key = notice.object['metadata']['uid']
+      cached    = @namespace_cache[cache_key]
+      if cached
+        @namespace_cache[cache_key] = parse_namespace_metadata(notice.object)
+        @stats.bump(:namespace_cache_watch_updates)
+      else
+        @stats.bump(:namespace_cache_watch_misses)
+      end
+    end
+
+    def update_pod_cache(notice)
+      cache_key = notice.object['metadata']['uid']
+      cached    = @cache[cache_key]
+      if cached
+        @cache[cache_key] = parse_pod_metadata(notice.object)
+        @stats.bump(:pod_cache_watch_updates)
+      elsif ENV['K8S_NODE_NAME'] == notice.object['spec']['nodeName'] then
+        @cache[cache_key] = parse_pod_metadata(notice.object)
+        @stats.bump(:pod_cache_host_updates)
+      else
+        @stats.bump(:pod_cache_watch_misses)
+      end
+    end
+
     def syms_to_strs(hsh)
       newhsh = {}
       hsh.each_pair do |kk,vv|

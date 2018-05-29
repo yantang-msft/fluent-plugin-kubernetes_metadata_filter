@@ -19,35 +19,43 @@
 require_relative 'kubernetes_metadata_common'
 
 module KubernetesMetadata
-  module WatchNamespaces
+  module WatchPod
 
     include ::KubernetesMetadata::Common
 
-    def start_namespace_watch
+    def start_pod_watch
       begin
-        resource_version = @client.get_namespaces.resourceVersion
-        watcher          = @client.watch_namespaces(resource_version)
-      rescue Exception=>e
-        message = "start_namespace_watch: Exception encountered setting up namespace watch from Kubernetes API #{@apiVersion} endpoint #{@kubernetes_url}: #{e.message}"
+        return if !metadata_source.pod_name
+        watcher = @client.watch_pods({:namespace => @metadata_source.namespace_name, :name => @metadata_source.pod_name})
+      rescue Exception => e
+        message = "Exception encountered fetching metadata from Kubernetes API endpoint: #{e.message}"
         message += " (#{e.response})" if e.respond_to?(:response)
-        log.debug(message)
+
         raise Fluent::ConfigError, message
       end
+
       watcher.each do |notice|
         case notice.type
-          when 'MODIFIED'
-            update_namespace_cache(notice)
+          when 'MODIFIED', 'ADDED'
+            update_pod_cache(notice)
+
+            # Update id_cache if pod UID is changed
+            id_cache_key = get_id_cache_key_given_metadata_source
+            id_cached = @id_cache[id_cache_key]
+            if id_cached && id_cached[:pod_id] != pod_id
+              id_cached[:pod_id] = pod_id
+              @stats.bump(:id_cache_watch_updates_pod);
+            end
           when 'DELETED'
-            # ignore and let age out for cases where 
+            # ignore and let age out for cases where pods
             # deleted but still processing logs
-            @stats.bump(:namespace_cache_watch_deletes_ignored)
+            @stats.bump(:pod_cache_watch_delete_ignored)
           else
-            # Don't pay attention to creations, since the created namespace may not
-            # be used by any pod on this node.
-            @stats.bump(:namespace_cache_watch_ignored)
+            # Don't pay attention to creations, since the created pod may not
+            # end up on this node.
+            @stats.bump(:pod_cache_watch_ignored)
         end
       end
     end
-
   end
 end

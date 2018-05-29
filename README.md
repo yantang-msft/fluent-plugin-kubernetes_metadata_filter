@@ -54,7 +54,7 @@ when true (default: `true`)
 * `orphaned_namespace_id` - The namespace id to associate with records where the namespace can not be determined (default: `orphaned`)
 * `<metadata_source> section` - The names of the kubernetes resource as the source of metadata. You can only specify one kubernetes resource here. This is useful in cases like running fluentd as a sidecar, where you only want to enrich the metadata of the pod that the sidecar is running in. You can easily pass the the namespace_name and the pod_name from the [Downward API](https://kubernetes.io/docs/tasks/inject-data-application/downward-api-volume-expose-pod-information/).
   * `namespace_name` - The name of the namespace. This is required if `<metadata_source>` is specified.
-  * `pod_name` - The name of the pod. Metadata of the pod will be added if `pod_name` is specified (default: `nil`)
+  * `pod_name` - The name of the pod. This is required if `<metadata_source>` is specified.
   * `container_name` - The name of the container. Metadata of the container will be added if `container_name` is specified (default: `nil`)
 
 **NOTE:** As of the release 2.1.x of this plugin, it no longer supports parsing the source message into JSON and attaching it to the

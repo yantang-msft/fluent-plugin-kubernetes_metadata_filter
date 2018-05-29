@@ -20,7 +20,9 @@
 require_relative 'kubernetes_metadata_cache_strategy'
 require_relative 'kubernetes_metadata_common'
 require_relative 'kubernetes_metadata_stats'
+require_relative 'kubernetes_metadata_watch_namespace'
 require_relative 'kubernetes_metadata_watch_namespaces'
+require_relative 'kubernetes_metadata_watch_pod'
 require_relative 'kubernetes_metadata_watch_pods'
 
 require 'fluent/plugin/filter'
@@ -32,8 +34,6 @@ module Fluent::Plugin
 
     include KubernetesMetadata::CacheStrategy
     include KubernetesMetadata::Common
-    include KubernetesMetadata::WatchNamespaces
-    include KubernetesMetadata::WatchPods
 
     Fluent::Plugin.register_filter('kubernetes_metadata', self)
 
@@ -74,7 +74,7 @@ module Fluent::Plugin
 
     config_section :metadata_source, multi: false do
       config_param :namespace_name, :string
-      config_param :pod_name, :string, default: nil
+      config_param :pod_name, :string
       config_param :container_name, :string, default: nil
     end
 
@@ -215,15 +215,6 @@ module Fluent::Plugin
         end
       end
 
-      # Check whether the user want to enrich record with metadata of a specific pod
-      @specific_pod = false
-      if @metadata_source
-        if !@metadata_source.namespace_name || !@metadata_source.pod_name
-          raise ArgumentError.new("You need to specify both the namespace_name and pod_name if you want to enrich the record with metadata of a specific pod")
-        end
-        @specific_pod = true
-      end
-
       if @kubernetes_url.present?
 
         ssl_options = {
@@ -252,6 +243,14 @@ module Fluent::Plugin
         end
 
         if @watch
+          if @metadata_source
+            self.class.send(:include, KubernetesMetadata::WatchNamespace)
+            self.class.send(:include, KubernetesMetadata::WatchPod)
+          else
+            self.class.send(:include, KubernetesMetadata::WatchNamespaces)
+            self.class.send(:include, KubernetesMetadata::WatchPods)
+          end
+
           thread = Thread.new(self) { |this| this.start_pod_watch }
           thread.abort_on_exception = true
           namespace_thread = Thread.new(self) { |this| this.start_namespace_watch }
@@ -259,9 +258,9 @@ module Fluent::Plugin
         end
       end
 
-      if @specific_pod
-        log.debug "Will enrich record with metadata of pod: #{@metadata_source.namespace_name}/#{@metadata_source.pod_name}"
-        self.class.class_eval { alias_method :filter_stream, :filter_stream_with_specific_pod }
+      if @metadata_source
+        log.debug "Will enrich record with metadata of #{@metadata_source.namespace_name}/#{@metadata_source.pod_name}/#{@metadata_source.container_name}"
+        self.class.class_eval { alias_method :filter_stream, :filter_stream_given_metadata_source }
       elsif @use_journal
         log.debug "Will stream from the journal"
         self.class.class_eval { alias_method :filter_stream, :filter_stream_from_journal }
@@ -317,15 +316,12 @@ module Fluent::Plugin
       es
     end
 
-    def get_id_cache_key_of_specific_pod()
-      if !@specific_pod
-        raise "This method can only be called when a specific pod is specified"
-      end
-
+    def get_id_cache_key_given_metadata_source()
+      # id_cache maps to namespace/pod UID, so container name is not used
       "#{@metadata_source.namespace_name}_#{@metadata_source.pod_name}"
     end
 
-    def filter_stream_with_specific_pod(tag, es)
+    def filter_stream_given_metadata_source(tag, es)
       new_es = Fluent::MultiEventStream.new
 
       match_data = {
@@ -333,7 +329,7 @@ module Fluent::Plugin
         'pod_name' => @metadata_source.pod_name,
         'container_name' => @metadata_source.container_name
       }
-      cache_key = get_id_cache_key_of_specific_pod
+      cache_key = get_id_cache_key_given_metadata_source
       batch_miss_cache = {}
       metadata = {
         'kubernetes' => get_metadata_for_record(match_data, cache_key, create_time_from_record(es.first[1]), batch_miss_cache)

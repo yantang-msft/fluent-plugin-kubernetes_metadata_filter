@@ -19,31 +19,35 @@
 require_relative 'kubernetes_metadata_common'
 
 module KubernetesMetadata
-  module WatchNamespaces
+  module WatchNamespace
 
     include ::KubernetesMetadata::Common
 
     def start_namespace_watch
       begin
-        resource_version = @client.get_namespaces.resourceVersion
-        watcher          = @client.watch_namespaces(resource_version)
+        watcher = @client.watch_namespaces({:name => @metadata_source.namespace_name})
       rescue Exception=>e
         message = "start_namespace_watch: Exception encountered setting up namespace watch from Kubernetes API #{@apiVersion} endpoint #{@kubernetes_url}: #{e.message}"
         message += " (#{e.response})" if e.respond_to?(:response)
         log.debug(message)
         raise Fluent::ConfigError, message
       end
+
       watcher.each do |notice|
         case notice.type
-          when 'MODIFIED'
+          when 'MODIFIED', 'ADDED'
             update_namespace_cache(notice)
-          when 'DELETED'
+
+            # Update id_cache if namespace UID is changed
+            id_cache_key = get_id_cache_key_given_metadata_source
+            id_cached = @id_cache[id_cache_key]
+            if id_cached && id_cached[:namespace_id] != namespace_id
+              id_cached[:namespace_id] = namespace_id
+              @stats.bump(:id_cache_watch_updates_namespace);
+            end
+          else
             # ignore and let age out for cases where 
             # deleted but still processing logs
-            @stats.bump(:namespace_cache_watch_deletes_ignored)
-          else
-            # Don't pay attention to creations, since the created namespace may not
-            # be used by any pod on this node.
             @stats.bump(:namespace_cache_watch_ignored)
         end
       end
