@@ -39,6 +39,7 @@ module KubernetesMetadata
             update_namespace_cache(notice)
 
             # Update id_cache if namespace UID is changed
+            namespace_id = notice.object['metadata']['uid']
             id_cache_key = get_id_cache_key_given_metadata_source
             id_cached = @id_cache[id_cache_key]
             if id_cached && id_cached[:namespace_id] != namespace_id

@@ -40,6 +40,7 @@ module KubernetesMetadata
             update_pod_cache(notice)
 
             # Update id_cache if pod UID is changed
+            pod_id = notice.object['metadata']['uid']
             id_cache_key = get_id_cache_key_given_metadata_source
             id_cached = @id_cache[id_cache_key]
             if id_cached && id_cached[:pod_id] != pod_id
