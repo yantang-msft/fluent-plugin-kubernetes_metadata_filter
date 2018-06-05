@@ -37,7 +37,17 @@ module KubernetesMetadata
       watcher.each do |notice|
         case notice.type
           when 'MODIFIED'
-            update_pod_cache(notice)
+            cache_key = notice.object['metadata']['uid']
+            cached    = @cache[cache_key]
+            if cached
+              @cache[cache_key] = parse_pod_metadata(notice.object)
+              @stats.bump(:pod_cache_watch_updates)
+            elsif ENV['K8S_NODE_NAME'] == notice.object['spec']['nodeName'] then
+              @cache[cache_key] = parse_pod_metadata(notice.object)
+              @stats.bump(:pod_cache_host_updates)
+            else
+              @stats.bump(:pod_cache_watch_misses)
+            end
           when 'DELETED'
             # ignore and let age out for cases where pods
             # deleted but still processing logs

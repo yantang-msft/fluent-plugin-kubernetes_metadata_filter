@@ -158,6 +158,21 @@ class KubernetesMetadataFilterTest < Test::Unit::TestCase
       d.filtered.map{|e| e.last}
     end
 
+    test 'nil event stream given metadata source' do
+      #not certain how this is possible but adding test to properly
+      #guard against this condition we have seen
+ 
+      plugin = create_driver('
+        <metadata_source>
+          namespace_name default
+          pod_name fabric8-console-controller-98rqc
+          container_name fabric8-console-container
+        </metadata_source>
+      ').instance
+      plugin.filter_stream_given_metadata_source('tag', nil)
+      plugin.filter_stream_given_metadata_source('tag', Fluent::MultiEventStream.new)
+    end
+
     test 'nil event stream from journal' do
      #not certain how this is possible but adding test to properly
      #guard against this condition we have seen
@@ -770,6 +785,99 @@ class KubernetesMetadataFilterTest < Test::Unit::TestCase
           'CONTAINER_ID_FULL' => '49095a2894da899d3b327c5fde1e056a81376cc9a8f8b09a195f2a92bceed459',
           'randomfield' => 'randomvalue'
         }
+        assert_equal(expected_kube_metadata, filtered[0])
+      end
+    end
+
+    test 'with given metadata source and failed to fetch metadata' do
+      VCR.use_cassette('kubernetes_docker_metadata') do
+        stub_request(:any, 'https://localhost:8443/api/v1/namespaces/default/pods/fabric8-console-controller-98rqc').to_timeout
+        stub_request(:any, 'https://localhost:8443/api/v1/namespaces/default').to_timeout
+        filtered = emit_with_tag('random_tag', {'time'=>'2015-05-08T09:22:01Z'}, '
+          kubernetes_url https://localhost:8443
+          watch false
+          cache_size 1
+          <metadata_source>
+            namespace_name default
+            pod_name fabric8-console-controller-98rqc
+            container_name fabric8-console-container
+          </metadata_source>
+        ')
+
+        expected_kube_metadata = {
+          'time'=>'2015-05-08T09:22:01Z',
+          'kubernetes' => {
+            'pod_name'           => 'fabric8-console-controller-98rqc',
+            'container_name'     => 'fabric8-console-container',
+            'namespace_id'       => 'orphaned',
+            'namespace_name'     => '.orphaned',
+            'orphaned_namespace' => 'default'
+          }
+        }
+
+        assert_equal(expected_kube_metadata, filtered[0])
+      end
+    end
+
+    test 'with given metadata source and no container name specified' do
+      VCR.use_cassette('kubernetes_docker_metadata') do
+        filtered = emit_with_tag('random_tag', {'time'=>'2015-05-08T09:22:01Z'}, '
+          kubernetes_url https://localhost:8443
+          watch false
+          cache_size 1
+          <metadata_source>
+            namespace_name default
+            pod_name fabric8-console-controller-98rqc
+          </metadata_source>
+        ')
+
+        expected_kube_metadata = {
+          'time'=>'2015-05-08T09:22:01Z',
+          'kubernetes' => {
+            'container_name' => nil,
+            'host'           => 'jimmi-redhat.localnet',
+            'labels'         => {'component'=>'fabric8Console'},
+            'master_url'     => 'https://localhost:8443',
+            'namespace_id'   => '898268c8-4a36-11e5-9d81-42010af0194c',
+            'namespace_name' => 'default',
+            'pod_id'         => 'c76927af-f563-11e4-b32d-54ee7527188d',
+            'pod_name'       => 'fabric8-console-controller-98rqc'
+          }
+        }
+
+        assert_equal(expected_kube_metadata, filtered[0])
+      end
+    end
+
+    test 'with given metadata source and container name is specified' do
+      VCR.use_cassette('kubernetes_docker_metadata') do
+        filtered = emit_with_tag('random_tag', {'time'=>'2015-05-08T09:22:01Z'}, '
+          kubernetes_url https://localhost:8443
+          watch false
+          cache_size 1
+          <metadata_source>
+            namespace_name default
+            pod_name fabric8-console-controller-98rqc
+            container_name fabric8-console-container
+          </metadata_source>
+        ')
+
+        expected_kube_metadata = {
+          'time'=>'2015-05-08T09:22:01Z',
+          'kubernetes' => {
+            'container_name'     => 'fabric8-console-container',
+            'container_image'    => 'fabric8/hawtio-kubernetes:latest',
+            'container_image_id' => 'docker://b2bd1a24a68356b2f30128e6e28e672c1ef92df0d9ec01ec0c7faea5d77d2303',
+            'host'               => 'jimmi-redhat.localnet',
+            'labels'             => {'component'=>'fabric8Console'},
+            'master_url'         => 'https://localhost:8443',
+            'namespace_id'       => '898268c8-4a36-11e5-9d81-42010af0194c',
+            'namespace_name'     => 'default',
+            'pod_id'             => 'c76927af-f563-11e4-b32d-54ee7527188d',
+            'pod_name'           => 'fabric8-console-controller-98rqc'
+          }
+        }
+
         assert_equal(expected_kube_metadata, filtered[0])
       end
     end

@@ -23,10 +23,16 @@ class WatchTest < Test::Unit::TestCase
    
     setup do
       @annotations_regexps = []
+      @id_cache = {}
       @namespace_cache = {}
       @cache = {}
       @stats = KubernetesMetadata::Stats.new
       @client = OpenStruct.new
+      @metadata_source = OpenStruct.new(
+        'namespace_name' => 'default',
+        'pod_name' => 'pod_name',
+        'container_name' => 'container_name'
+      )
       def @client.resourceVersion
         '12345'
       end

@@ -36,7 +36,14 @@ module KubernetesMetadata
       watcher.each do |notice|
         case notice.type
           when 'MODIFIED'
-            update_namespace_cache(notice)
+            cache_key = notice.object['metadata']['uid']
+            cached    = @namespace_cache[cache_key]
+            if cached
+              @namespace_cache[cache_key] = parse_namespace_metadata(notice.object)
+              @stats.bump(:namespace_cache_watch_updates)
+            else
+              @stats.bump(:namespace_cache_watch_misses)
+            end
           when 'DELETED'
             # ignore and let age out for cases where 
             # deleted but still processing logs

@@ -320,12 +320,8 @@ module Fluent::Plugin
       es
     end
 
-    def get_id_cache_key_given_metadata_source()
-      # id_cache maps to namespace/pod UID, so container name is not used
-      "#{@metadata_source.namespace_name}_#{@metadata_source.pod_name}"
-    end
-
     def filter_stream_given_metadata_source(tag, es)
+      return es if es.nil? || es.empty?
       new_es = Fluent::MultiEventStream.new
 
       match_data = {
